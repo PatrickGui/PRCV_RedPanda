@@ -48,3 +48,19 @@ def preprocess_with_augmentation_without_norm(image_size):
                                hue=0.2),
         transforms.ToTensor()
     ])
+
+# ImageNet的mean
+normalize_torch = transforms.Normalize(
+    mean=[0.485, 0.456, 0.406],
+    std=[0.229, 0.224, 0.225]
+)
+
+normalize_05 = transforms.Normalize(
+    mean=[0.5, 0.5, 0.5],
+    std=[0.5, 0.5, 0.5]
+)
+# 使用的数据集的std和mean
+normalize_dataset=transforms.Normalize(
+    mean=[0.463,0.400, 0.486],
+    std=[0.191,0.212, 0.170]
+)

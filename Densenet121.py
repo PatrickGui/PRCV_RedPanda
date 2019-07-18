@@ -1,10 +1,6 @@
 import random
-
-import torch
-
-import models_load
 import datetime
-
+import models_load
 from data_load import *
 from data_preprocess import *
 import pandas as pd
@@ -13,20 +9,24 @@ import torch.nn as nn
 import numpy as np
 from tensorboardX import SummaryWriter
 from utils import *
-
+from tqdm import tqdm
+#
 # SEED=10
 # random.seed(SEED)
 # np.random.seed(SEED)
 # torch.manual_seed(SEED)
 # torch.cuda.manual_seed_all(SEED)
 
+ANNOTATION_TRAIN = '/media/phgui/2D6E11B1D89550E7/IDADP-PRCV2019-training/protocol/Train/'
+IMAGE_PRE = '/media/phgui/2D6E11B1D89550E7/IDADP-PRCV2019-training/'
+ANNOTATION_VAL = '/media/phgui/2D6E11B1D89550E7/IDADP-PRCV2019-training/protocol/Val/'
 
 os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 torch.backends.cudnn.benchmark = True
 
 NB_CLASS = 59
 IMAGE_SIZE = 224
-BATCH_SIZE = 16
+BATCH_SIZE = 16  #2250/16
 DATE = str(datetime.date.today())
 def getModel():
     print('[+] loading model... ', end='', flush=True)
@@ -39,37 +39,35 @@ def train(epochNum):
     writer = SummaryWriter('log/' + DATE + '/DesNet121/')  # 创建 /log/日期/InceptionResnet的组织形式  不同模型需要修改不同名称
     train_dataset = MyDataSet(
         root=ANNOTATION_TRAIN,
-        transform=preprocess_with_augmentation(normalize_torch,image_size=IMAGE_SIZE),
-        root_pre=IMAGE_TRAIN_PRE
+        transform=preprocess(normalize_torch, image_size=IMAGE_SIZE),
+        root_pre=IMAGE_PRE
     )
     val_dataset = MyDataSet(
         root=ANNOTATION_VAL,
         transform=preprocess(normalize_torch, IMAGE_SIZE),
-        root_pre=IMAGE_VAL_PRE
+        root_pre=IMAGE_PRE
     )
     train_dataLoader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    val_dataLoader = DataLoader(dataset=val_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    val_dataLoader = DataLoader(dataset=val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     # train_dataLoader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=16)
     # val_dataLoader = DataLoader(dataset=val_dataset, batch_size=BATCH_SIZE, num_workers=1, shuffle=False)
 
     model = getModel()
 
 
-    weight = torch.Tensor(
-        [1, 3, 3, 3, 3, 4, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 2, 3, 4, 2, 3, 1, 1, 3, 2, 2, 1, 3, 3, 1, 3, 2, 3,
-         3, 3, 3, 2, 1, 3, 2, 3, 3, 3, 1, 3, 3, 4, 4, 3, 2, 2, 3, 1, 1, 3]).cuda()
-    criterion = nn.CrossEntropyLoss(weight=weight).cuda()
+    # weight = torch.Tensor(
+    #     [1, 3, 3, 3, 3, 4, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 2, 3, 4, 2, 3, 1, 1, 3, 2, 2, 1, 3, 3, 1, 3, 2, 3,
+    #      3, 3, 3, 2, 1, 3, 2, 3, 3, 3, 1, 3, 3, 4, 4, 3, 2, 2, 3, 1, 1, 3]).cuda()
+    criterion = nn.CrossEntropyLoss().cuda()
 
-    patience = 0
+    patience = 0  #防止局部最小
     lr = 0.0
-    momentum = 0.0
-
+    # momentum = 0.0
     min_loss = 3.1
-    print('min_loss is :%f' % (min_loss))
     min_acc = 0.80
+    print('min_loss is :%f' % (min_loss))
     for epoch in range(epochNum):
         print('Epoch {}/{}'.format(epoch, epochNum-1))
-        print('-' *20)
         if epoch==0 or epoch==1 or epoch==2:
             lr = 1e-3
             optimizer = torch.optim.Adam(model.fresh_params(), lr=lr, amsgrad=True, weight_decay=1e-4)
@@ -84,13 +82,13 @@ def train(epochNum):
 
         if patience == 2:
             patience = 0
-            model.load_state_dict(torch.load('../model/DesNet121/' + DATE + '_loss_best.pth')['state_dict'])
+            model.load_state_dict(torch.load('/model/DesNet121/' + DATE + '_loss_best.pth')['state_dict'])
             lr = lr / 10
             print('loss has increased lr divide 10 lr now is :%f' % (lr))
 
         running_loss = RunningMean()
         running_corrects = RunningMean()
-        for batch_idx, (inputs, labels) in enumerate(train_dataLoader):
+        for n_iter, (inputs, labels) in tqdm(enumerate(train_dataLoader)):
 
             model.train(True)
             n_batchsize = inputs.size(0)
@@ -119,18 +117,25 @@ def train(epochNum):
             loss.backward()
             optimizer.step()
 
-            if batch_idx%3 == 2:
+            if n_iter%10 == 9:
                 print('[epoch:%d, batch:%d]:Acc:%f,loss:%f'%
-                      (epoch, batch_idx, running_corrects.value, running_loss.value))
-                if batch_idx %300 == 299:
+                      (epoch, n_iter, running_corrects.value, running_loss.value))
+                if n_iter %30 == 29:
+                    writer.add_scalar('Train/Acc', running_corrects.value,n_iter)
+                    writer.add_scalar('Train/Loss', running_loss.value, n_iter)
+
+
                     lx, px = predict(model, val_dataLoader)
                     _, preds = torch.max(px, dim=1)
                     accuracy = torch.mean((preds == lx).float())
                     log_loss = criterion(Variable(px), Variable(lx))
                     log_loss = log_loss.item()
 
+                    writer.add_scalar('Val/Acc', accuracy, n_iter)
+                    writer.add_scalar('Val/Loss', log_loss, n_iter)
+
                     print('[epoch:%d,batch:%d]: val_loss:%f,val_acc:%f,val_total:%d' % (
-                    epoch, batch_idx, log_loss, accuracy, len(val_dataset)))
+                    epoch, n_iter, log_loss, accuracy, len(val_dataset)))
 
         print('[epoch:%d] :acc: %f,loss:%f,lr:%f,patience:%d' % (
         epoch, running_corrects.value, running_loss.value, lr, patience))
@@ -142,8 +147,11 @@ def train(epochNum):
         accuracy = torch.mean((preds == lx).float())
         print('[epoch:%d]: val_loss:%f,val_acc:%f,' % (epoch, log_loss, accuracy))
 
+        writer.add_scalar('Val/Acc', accuracy, n_iter)
+        writer.add_scalar('Val/Loss', log_loss, n_iter)
+
         if log_loss < min_loss:
-            snapshot('../model/', 'DesNet121', {
+            snapshot('model/DesNet121/', DATE + '_loss_best.pth', {
                 'epoch': epoch + 1,
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
@@ -155,7 +163,7 @@ def train(epochNum):
         else:
             patience += 1
         if accuracy > min_acc:
-            snapshot('../model/', 'DesNet121', {
+            snapshot('model/DesNet121/', DATE + '_acc_best.pth', {
                 'epoch': epoch + 1,
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
@@ -167,7 +175,7 @@ def train(epochNum):
 
 
 if __name__ == '__main__':
-    train(60)
+    train(20)
 
 
 

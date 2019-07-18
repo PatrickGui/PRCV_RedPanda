@@ -45,6 +45,7 @@ def predict(model, dataloader):
 保存训练
 '''
 def snapshot(savepathPre,savePath,state):
+
     if not os.path.exists(savepathPre):
         os.makedirs(savepathPre+savePath)
     torch.save(state, savePath)

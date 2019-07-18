@@ -1,4 +1,5 @@
 import json
+import os
 
 from torch.utils.data import *
 from PIL import Image
@@ -17,13 +18,25 @@ class MyDataSet(Dataset):
         :param target_transform:
         :param root_pre: 存放图片的文件夹根目录路径
         '''
-        imgs = json.load(open(root, 'r'))
-        image_path = [element['image_id'] for element in imgs]
-        image_label = [element['disease_class'] for element in imgs]
-        samples = list(zip(image_path, image_label))
+        samples = []
+        for file in os.listdir(root):
+            # if not index==0: #划分验证集
+            if not os.path.isdir(file):
+                for line in open(root+file, 'r'):
+                    str_line = line.split()
+                    samples.append(tuple([str_line[0], int(str_line[1])]))
 
-        self.samples = samples
-        self.targets = [s[1] for s in samples]
+
+
+        # imgs = json.load(open(root, 'r'))
+        #
+        #
+        # image_path = [element['image_id'] for element in imgs]
+        # image_label = [element['disease_class'] for element in imgs]
+        # samples = list(zip(image_path, image_label))
+
+        self.samples = samples  #2250
+        self.targets = [int(s[1]) for s in samples]
         self.loader = loader
         self.transform = transform
         self.target_transform = target_transform
@@ -44,10 +57,8 @@ class MyDataSet(Dataset):
         return len(self.samples)
 
 
-# if __name__ == '__main__':
-#     IMAGE_TRAIN_PRE = '/media/phgui/2D6E11B1D89550E7/Challenge_2018/ai_challenger_pdr2018_' \
-#                       'trainingset_20181023/AgriculturalDisease_trainingset/images'
-#     ANNOTATION_TRAIN = '/media/phgui/2D6E11B1D89550E7/Challenge_2018/ai_challenger_pdr2018_' \
-#                        'trainingset_20181023/AgriculturalDisease_trainingset/AgriculturalDisease_train_annotations.json'  # 是否需要剔除两类异常类
-#
-#     MyDataSet(root=ANNOTATION_TRAIN, root_pre=IMAGE_TRAIN_PRE)
+if __name__ == '__main__':
+    ANNOTATION_TRAIN= '/media/phgui/2D6E11B1D89550E7/IDADP-PRCV2019-training/protocol/Train/'
+    IMAGE_TRAIN_PRE = '/media/phgui/2D6E11B1D89550E7/IDADP-PRCV2019-training/'
+    ANNOTATION_VAL = '/media/phgui/2D6E11B1D89550E7/IDADP-PRCV2019-training/protocol/Val/'
+    MyDataSet(root=ANNOTATION_TRAIN, root_pre=IMAGE_TRAIN_PRE)
