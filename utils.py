@@ -28,18 +28,7 @@ class RunningMean:
         return str(self.value)
 
 
-'''
-预测data在model上的结果
-'''
-def predict(model, dataloader):
-    model.eval()
-    with torch.no_grad():
-        for batch_idx, (inputs, labels) in enumerate(dataloader):
 
-            inputs = Variable(inputs).cuda()
-            outputs = model(inputs)
-
-    return labels.cuda(), outputs.data.cpu().cuda()
 
 '''
 保存训练
@@ -47,8 +36,8 @@ def predict(model, dataloader):
 def snapshot(savepathPre,savePath,state):
 
     if not os.path.exists(savepathPre):
-        os.makedirs(savepathPre+savePath)
-    torch.save(state, savePath)
+        os.makedirs(savepathPre)
+    torch.save(state, os.path.join(savepathPre, savePath))
 
 
 '''

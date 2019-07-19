@@ -32,6 +32,10 @@ def getModel():
     print('[+] loading model... ', end='', flush=True)
     model = models_load.densenet121_finetune(NB_CLASS)
     model.cuda()
+    pth = os.listdir('./model/DesNet121') ##pth[0] --> 最新的.pth文件
+    if len(pth) != 0:
+        model.load_state_dict(torch.load('./model/DesNet121/' + pth[0])['state_dict'])
+        print('[+] loading model :'+pth[0])
     print('Done')
     return model
 
@@ -82,7 +86,7 @@ def train(epochNum):
 
         if patience == 2:
             patience = 0
-            model.load_state_dict(torch.load('/model/DesNet121/' + DATE + '_loss_best.pth')['state_dict'])
+            model.load_state_dict(torch.load('./model/DesNet121/' + DATE + '_loss_best.pth')['state_dict'])
             lr = lr / 10
             print('loss has increased lr divide 10 lr now is :%f' % (lr))
 
@@ -140,9 +144,11 @@ def train(epochNum):
         print('[epoch:%d] :acc: %f,loss:%f,lr:%f,patience:%d' % (
         epoch, running_corrects.value, running_loss.value, lr, patience))
 
+
         lx, px = predict(model, val_dataLoader)
         log_loss = criterion(Variable(px), Variable(lx))
         log_loss = log_loss.item()
+
         _, preds = torch.max(px, dim=1)
         accuracy = torch.mean((preds == lx).float())
         print('[epoch:%d]: val_loss:%f,val_acc:%f,' % (epoch, log_loss, accuracy))
@@ -151,7 +157,7 @@ def train(epochNum):
         writer.add_scalar('Val/Loss', log_loss, n_iter)
 
         if log_loss < min_loss:
-            snapshot('model/DesNet121/', DATE + '_loss_best.pth', {
+            snapshot(os.getcwd()+'/model/DesNet121', DATE + '_loss_best.pth', {
                 'epoch': epoch + 1,
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
@@ -163,7 +169,7 @@ def train(epochNum):
         else:
             patience += 1
         if accuracy > min_acc:
-            snapshot('model/DesNet121/', DATE + '_acc_best.pth', {
+            snapshot(os.getcwd()+'model/DesNet121', DATE + '_acc_best.pth', {
                 'epoch': epoch + 1,
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
@@ -172,10 +178,55 @@ def train(epochNum):
             min_acc = accuracy
             print('save new model acc,now acc is ', min_acc)
 
+'''
+预测data在model上的结果
+'''
+def predict(model, dataloader):
+    all_labels = []
+    all_outputs = []
+    model.eval()
+    with torch.no_grad():
+        for batch_idx, (inputs, labels) in enumerate(dataloader):
+            all_labels.append(labels)
+            inputs = Variable(inputs).cuda()
+            outputs = model(inputs)
+            all_outputs.append(outputs.data.cpu())
+        all_outputs = torch.cat(all_outputs)
+        all_labels = torch.cat(all_labels)
+        all_labels = all_labels.cuda()
+        all_outputs = all_outputs.cuda()
+    return all_labels, all_outputs
+'''
+测试data在model上的结果
+'''
+def test(model):
+    test_dataset = MyDataSet(
+        root=ANNOTATION_VAL,
+        transform=preprocess(normalize_torch, IMAGE_SIZE),
+        root_pre=IMAGE_PRE
+    )
+    test_dataLoader = DataLoader(dataset=test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
+    all_labels = []
+    all_outputs = []
+    model.eval()
+    with torch.no_grad():
+        for batch_idx, (inputs, labels) in enumerate(test_dataLoader):
+            all_labels.append(labels)
+            inputs = Variable(inputs).cuda()
+            outputs = model(inputs)
+            all_outputs.append(outputs.data.cpu())
+        all_outputs = torch.cat(all_outputs)
+        all_labels = torch.cat(all_labels)
+        all_labels = all_labels.cuda()
+        all_outputs = all_outputs.cuda()
+        _, preds = torch.max(all_outputs, dim=1)
+        accuracy = torch.mean((preds == all_labels).float())
+        print('Test Acc:%f, Test Total:%d' % (accuracy, len(test_dataset)))
 
 if __name__ == '__main__':
-    train(20)
+    # train(20)
+    test(getModel())
 
 
 
